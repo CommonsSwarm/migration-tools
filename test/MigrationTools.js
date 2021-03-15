@@ -1,6 +1,6 @@
 /* global web3, artifacts, contract, before, beforeEach, describe, it, context */
-const { assertBn, assertRevert } = require('@aragon/contract-helpers-test/src/asserts')
-const { injectWeb3, injectArtifacts, ZERO_ADDRESS, bn } = require('@aragon/contract-helpers-test')
+const { assertBn, assertRevert, assertEvent } = require('@aragon/contract-helpers-test/src/asserts')
+const { injectWeb3, injectArtifacts, ZERO_ADDRESS, bn, pct16 } = require('@aragon/contract-helpers-test')
 const { ANY_ENTITY, newDao, installNewApp } = require('@aragon/contract-helpers-test/src/aragon-os')
 const { assert } = require('chai')
 const { hash: namehash } = require('eth-ens-namehash')
@@ -12,9 +12,10 @@ const MigrationTools = artifacts.require('MigrationTools')
 const TokenManager = artifacts.require('TokenManager')
 const Vault = artifacts.require('Vault')
 const MiniMeToken = artifacts.require('MiniMeToken')
+const START_DATE = parseInt(Date.now() / 1000)
 
 contract('MigrationTools', ([root, holder, holder2, anyone]) => {
-  let dao1, dao2, migrationToolsBase, tokenManagerBase, vaultBase
+  let dao1, dao2, migrationToolsBase, tokenManagerBase, vaultBase, fundsToken
   let ISSUE_ROLE, ASSIGN_ROLE, TRANSFER_ROLE, SETUP_MINTING_ROLE, MIGRATE_ROLE
 
   const WEEK = 7 * 24 * 60 * 60
@@ -24,7 +25,7 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
   const MIGRATION_TOOLS_APP_ID = namehash(`migration-tools.aragonpm.test`)
   const VAULT_APP_ID = namehash(`vault.aragonpm.eth`)
 
-  const newMigrableDao = async root => {
+  const newMigrableDao = async (initialDistribution = {}) => {
     const { dao, acl } = await newDao(root)
     const tokenManager = await TokenManager.at(
       await installNewApp(dao, TOKEN_MANAGER_APP_ID, tokenManagerBase.address, root)
@@ -36,6 +37,9 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
     const vault2 = await Vault.at(await installNewApp(dao, VAULT_APP_ID, vaultBase.address, root))
 
     const token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', 0, 'n', true)
+    for (const [holder, amount] of Object.entries(initialDistribution)) {
+      await token.generateTokens(holder, amount)
+    }
     await token.changeController(tokenManager.address)
     await tokenManager.initialize(token.address, true, 0)
     await vault1.initialize()
@@ -56,8 +60,8 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
   })
 
   beforeEach('deploy DAOs with migration tools', async () => {
-    dao1 = await newMigrableDao(root)
-    dao2 = await newMigrableDao(root)
+    dao1 = await newMigrableDao({ [root]: 100, [holder]: 90, [holder2]: 10 })
+    dao2 = await newMigrableDao()
 
     await dao1.acl.createPermission(
       dao1.migrationTools.address,
@@ -106,7 +110,6 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
       assert.strictEqual(await dao1.migrationTools.vault1(), dao1.vault1.address)
       assert.strictEqual(await dao1.migrationTools.vault2(), dao1.vault2.address)
     })
-
     it('Can not be initialized again', async () => {
       await assertRevert(
         dao1.migrationTools.initialize(
@@ -139,8 +142,6 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
       )
     })
     describe('Sets up snapshot and vesting', async () => {
-      const now = parseInt(Date.now() / 1000)
-
       const testSetupMinting = vestingStartDate => {
         let txReceipt
         let token
@@ -175,7 +176,7 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
           assertBn(await dao2.migrationTools.vestingCompletePeriod(), bn(VESTING_COMPLETE_PERIOD))
         })
       }
-      context('with defined vesting start date', () => testSetupMinting(now))
+      context('with defined vesting start date', () => testSetupMinting(START_DATE))
       context('without defined vesting start date', () => testSetupMinting(0))
     })
     it('Can not be setup twice', async () => {
@@ -194,17 +195,127 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
   })
 
   describe('Mint tokens', async () => {
-    it('Requires previously setup minting')
-    it('Tokens can not be converted twice')
-    it('Vesting is properly setup')
-    it('Can mint for multiple addresses')
+    it('Requires previously setup minting', async() => {
+      await assertRevert(dao2.migrationTools.mintTokens(root), 'MIGRATION_TOOLS_MINTING_NOT_SETUP')
+    })
+    it('Tokens can not be converted twice', async() => {
+      const token = dao1.token.address
+      await dao2.migrationTools.setupMinting(token, 0, VESTING_CLIFF_PERIOD, VESTING_COMPLETE_PERIOD)
+      await dao2.migrationTools.mintTokens(root)
+      await assertRevert(dao2.migrationTools.mintTokens(root),'MIGRATION_TOOLS_TOKENS_ALREADY_MINTED')
+    })
+    describe('Vesting', async () => {
+      let vesting
+      beforeEach(async () => {
+        const token = dao1.token.address
+        await dao2.migrationTools.setupMinting(token, START_DATE, VESTING_CLIFF_PERIOD, VESTING_COMPLETE_PERIOD)
+        assertBn(await dao2.token.balanceOf(root), bn(0))
+        await dao2.migrationTools.mintTokens(root)
+        assertBn(await dao2.token.balanceOf(root), bn(100))
+        vesting = await dao2.tokenManager.getVesting(root, 0)
+      })
+      it('amount', async() => {
+        assertBn(vesting.amount, bn(100))
+      })
+      it('start date', async() => {
+        assertBn(vesting.start, bn(START_DATE))
+      })
+      it('cliff date', async() => {
+        assertBn(vesting.cliff, bn(START_DATE + VESTING_CLIFF_PERIOD))
+      })
+      it('vesting date', async() => {
+        assertBn(vesting.vesting, bn(START_DATE + VESTING_COMPLETE_PERIOD))
+      })
+      it('is revokable', async() => {
+        assert.isTrue(vesting.revokable)
+      })
+    })
+    it('Emits a MigrateTokens event', async() => {
+      await dao2.migrationTools.setupMinting(dao1.token.address, 0, VESTING_CLIFF_PERIOD, VESTING_COMPLETE_PERIOD)
+      const txReceipt = await dao2.migrationTools.mintTokens(root)
+      assertEvent(txReceipt, 'MigrateTokens')
+    })
+    it('Can mint for multiple addresses', async () => {
+      const token = dao1.token.address
+      await dao2.migrationTools.setupMinting(token, 0, VESTING_CLIFF_PERIOD, VESTING_COMPLETE_PERIOD)
+      await dao2.migrationTools.mintTokensForMany([root, holder, holder2])
+    })
   })
 
   describe('Migrate', async () => {
-    it('Requires correct percentage')
-    it('Transfers from vault1 to newVault2 when required')
-    it('Transfers from vault2 to newVault1 when required')
-    it('Sets up minting correctly')
-    it('Does not transfer if minting was previously set up')
+    const TOTAL_FUNDS = 100
+    beforeEach(async () => {
+      fundsToken = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', 0, 'n', true)
+      await fundsToken.generateTokens(dao1.vault1.address, TOTAL_FUNDS * 0.3)
+      await fundsToken.generateTokens(dao1.vault2.address, TOTAL_FUNDS * 0.7)  
+    })
+    it('Requires correct percentage', async() => {
+      await assertRevert(dao1.migrationTools.migrate(
+        dao2.migrationTools.address,
+        dao2.vault1.address,
+        dao2.vault2.address,
+        fundsToken.address,
+        pct16(101),
+        0,
+        VESTING_CLIFF_PERIOD,
+        VESTING_COMPLETE_PERIOD
+      ), 'MIGRATION_TOOLS_INVALID_PCT')
+    })
+
+    const performMigration = async pct => {
+      return dao1.migrationTools.migrate(
+        dao2.migrationTools.address,
+        dao2.vault1.address,
+        dao2.vault2.address,
+        fundsToken.address,
+        pct16(pct), 
+        START_DATE,
+        VESTING_CLIFF_PERIOD,
+        VESTING_COMPLETE_PERIOD
+      )
+    }
+
+    const checkMigrationTransfers = async distributionPct => {
+      // Initial state: vault1 = 30%, vault2 = 70%
+      await performMigration(distributionPct)
+      // Final state: newVault1 = ${pct}%, newVault2 = ${100-pct}%
+      assertBn(await dao2.vault1.balance(fundsToken.address), bn(TOTAL_FUNDS * distributionPct / 100))
+      assertBn(await dao2.vault2.balance(fundsToken.address), bn(TOTAL_FUNDS * (100-distributionPct) / 100))
+    }
+
+    it('Transfers from vault1 to newVault2 when required', () => checkMigrationTransfers(10))
+    it('Transfers from vault2 to newVault1 when required', () => checkMigrationTransfers(40))
+    it('Transfers all from vault1 and vault2 to newVault1', () => checkMigrationTransfers(100))
+    it('Transfers all from vault1 and vault2 to newVault2', () => checkMigrationTransfers(0))
+    it('Sets up minting correctly', async() => {
+      await performMigration(50)
+      assert.strictEqual(await dao2.migrationTools.snapshotToken(), dao1.token.address)
+      assertBn(await dao2.migrationTools.vestingStartDate(), bn(START_DATE))
+      assertBn(await dao2.migrationTools.vestingCliffPeriod(), bn(VESTING_CLIFF_PERIOD))
+      assertBn(await dao2.migrationTools.vestingCompletePeriod(), bn(VESTING_COMPLETE_PERIOD))
+      
+    })
+    it('Emits a MigrateDao event', async() => {
+      const migrateReceipt = await performMigration(50)
+      assertEvent(migrateReceipt, 'MigrateDao')
+    })
+    it('Does not transfer if minting was previously set up', async() => {
+      await dao2.migrationTools.setupMinting(
+        fundsToken.address,
+        START_DATE,
+        VESTING_CLIFF_PERIOD,
+        VESTING_COMPLETE_PERIOD
+      )
+      await assertRevert(dao1.migrationTools.migrate(
+        dao2.migrationTools.address,
+        dao2.vault1.address,
+        dao2.vault2.address,
+        fundsToken.address,
+        pct16(50), 
+        START_DATE,
+        VESTING_CLIFF_PERIOD,
+        VESTING_COMPLETE_PERIOD
+      ), 'MIGRATION_TOOLS_MINTING_ALREADY_SETUP')
+    })
   })
 })

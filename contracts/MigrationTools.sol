@@ -14,7 +14,7 @@ contract MigrationTools is AragonApp {
 
     /// Events
     event MigrateDao(address _openableApp, address vault1, address vault2);
-    event ConvertTokens(address indexed holder, uint256 amount, uint256 vestingId);
+    event MigrateTokens(address indexed holder, uint256 amount, uint256 vestingId);
 
     /// State
 
@@ -29,7 +29,7 @@ contract MigrationTools is AragonApp {
     uint64                              public vestingCliffPeriod;
     uint64                              public vestingCompletePeriod;
 
-    mapping(address => bool)            public conversions;
+    mapping(address => bool)            public tokenMigrations;
 
     /// ACL
     bytes32 constant public SETUP_MINTING_ROLE = keccak256("SETUP_MINTING_ROLE");
@@ -63,7 +63,7 @@ contract MigrationTools is AragonApp {
     }
 
     /**
-     * @notice Set up minting for snapshot token `_snapshotToken` with a vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate+_vestingCliffPeriod+_vestingCompletePeriod)` (all tokens transferable)
+     * @notice Set up minting for snapshot token `_snapshotToken` with a vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate + _vestingCompletePeriod)` (all tokens transferable)
      * @param _snapshotToken Old DAO token which snapshot will be used to mint new DAO tokens
      * @param _vestingStartDate Date the vesting calculations for new token start
      * @param _vestingCliffPeriod Date when the initial portion of new tokens are transferable
@@ -90,17 +90,17 @@ contract MigrationTools is AragonApp {
      * @notice Mint tokens based on a previously taken snapshot for many addresses
      * @param _holders List of addresses for whom tokens are going to be minted
      */
-    function mintTokens(address[] _holders) external isInitialized {
+    function mintTokensForMany(address[] _holders) external isInitialized {
         require(snapshotBlock != 0, ERROR_MINTING_NOT_SETUP);
         for (uint256 i = 0; i < _holders.length; i++) {
-            if (!conversions[_holders[i]]) {
+            if (!tokenMigrations[_holders[i]]) {
                 mintTokens(_holders[i]);
             }
         }
     }
 
     /**
-     * @notice Migrate all `_vaultToken` funds to vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) and use `_newMigrationApp` to snapshot and mint tokens with vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate + _vestingCliffPeriod + _vestingCompletePeriod)` (all tokens transferable)
+     * @notice Migrate all `_vaultToken` funds to vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) and use `_newMigrationApp` to snapshot and mint tokens with vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate + _vestingCompletePeriod)` (all tokens transferable)
      * @param _newMigrationApp New DAO's migration app
      * @param _newVault1 New DAO's first vault in which some funds will be transfered
      * @param _newVault2 New DAO's second vault in which the rest of funds will be transfered
@@ -136,8 +136,8 @@ contract MigrationTools is AragonApp {
      */
     function mintTokens(address _holder) public isInitialized {
         require(snapshotBlock != 0, ERROR_MINTING_NOT_SETUP);
-        require(!conversions[_holder], ERROR_TOKENS_ALREADY_MINTED);
-        conversions[_holder] = true;
+        require(!tokenMigrations[_holder], ERROR_TOKENS_ALREADY_MINTED);
+        tokenMigrations[_holder] = true;
 
         uint256 amount = snapshotToken.balanceOfAt(_holder, snapshotBlock);
 
@@ -150,7 +150,7 @@ contract MigrationTools is AragonApp {
             vestingStartDate.add(vestingCompletePeriod),
             true /* revokable */
         );
-        emit ConvertTokens(_holder, amount, vestedId);
+        emit MigrateTokens(_holder, amount, vestedId);
     }
 
     /**
@@ -162,18 +162,25 @@ contract MigrationTools is AragonApp {
      */
     function _transferFunds(address _newVault1, address _newVault2, address _token, uint256 _pct) internal {
         uint256 vault1Funds = vault1.balance(_token);
-        uint256 totalFunds = vault1Funds.add(vault2.balance(_token));
+        uint256 vault2Funds = vault2.balance(_token);
+        uint256 totalFunds = vault1Funds.add(vault2Funds);
         uint256 newVault1Funds = totalFunds.mul(_pct).div(PCT_BASE);
         uint256 newVault2Funds = totalFunds.sub(newVault1Funds);
 
         if (vault1Funds < newVault1Funds) {
-            vault1.transfer(_token, _newVault1, vault1Funds);
-            vault2.transfer(_token, _newVault1, newVault1Funds.sub(vault1Funds));
-            vault2.transfer(_token, _newVault2, newVault2Funds);
+            _transfer(vault1, _token, _newVault1, vault1Funds);
+            _transfer(vault2, _token, _newVault1, newVault1Funds.sub(vault1Funds));
+            _transfer(vault2, _token, _newVault2, newVault2Funds);
         } else {
-            vault1.transfer(_token, _newVault1, newVault1Funds);
-            vault1.transfer(_token, _newVault2, vault1Funds.sub(newVault1Funds));
-            vault2.transfer(_token, _newVault2, newVault2Funds);
+            _transfer(vault1, _token, _newVault1, newVault1Funds);
+            _transfer(vault1, _token, _newVault2, vault1Funds.sub(newVault1Funds));
+            _transfer(vault2, _token, _newVault2, vault2Funds);
+        }
+    }
+
+    function _transfer(Vault _vault, address _token, address _newVault, uint256 _funds) internal {
+        if (_funds > 0) {
+            _vault.transfer(_token, _newVault, _funds);
         }
     }
 }
