@@ -1,7 +1,7 @@
 {
   "name": "Migration Tools",
-  "author": "Sem",
-  "description": "An application for Aragon",
+  "author": "Commons Swarm",
+  "description": "Migration tool to transfer funds to a new DAO and mint tokens based on old ones",
   "details_url": "/meta/details.md",
   "source_url": "https://github.com/CommonsSwarm/migration-tools",
   "icons": [
