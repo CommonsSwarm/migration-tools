@@ -13,8 +13,8 @@ contract MigrationTools is AragonApp {
     uint256 public constant PCT_BASE = 10 ** 18; // 0% = 0; 1% = 10^16; 100% = 10^18
 
     /// Events
-    event MigrateDao(address _openableApp, address vault1, address vault2);
-    event MigrateTokens(address indexed holder, uint256 amount, uint256 vestingId);
+    event MigrateDao(address _newMigrationTools, address vault1, address vault2);
+    event ClaimTokens(address indexed holder, uint256 amount, uint256 vestingId);
 
     /// State
 
@@ -29,22 +29,22 @@ contract MigrationTools is AragonApp {
     uint64                              public vestingCliffPeriod;
     uint64                              public vestingCompletePeriod;
 
-    mapping(address => bool)            public tokenMigrations;
+    mapping(address => bool)            public hasClaimed;
 
     /// ACL
-    bytes32 constant public SETUP_MINTING_ROLE = keccak256("SETUP_MINTING_ROLE");
+    bytes32 constant public PREPARE_CLAIMS_ROLE = keccak256("PREPARE_CLAIMS_ROLE");
     bytes32 constant public MIGRATE_ROLE = keccak256("MIGRATE_ROLE");
 
     /// Errors
-    string private constant ERROR_TOKENS_ALREADY_MINTED = "MIGRATION_TOOLS_TOKENS_ALREADY_MINTED";
-    string private constant ERROR_MINTING_ALREADY_SETUP = "MIGRATION_TOOLS_MINTING_ALREADY_SETUP";
-    string private constant ERROR_MINTING_NOT_SETUP = "MIGRATION_TOOLS_MINTING_NOT_SETUP";
+    string private constant ERROR_TOKENS_ALREADY_CLAIMED = "MIGRATION_TOOLS_TOKENS_ALREADY_CLAIMED";
+    string private constant ERROR_CLAIMS_ALREADY_PREPARED = "MIGRATION_TOOLS_CLAIMS_ALREADY_PREPARED";
+    string private constant ERROR_CLAIMS_NOT_PREPARED = "MIGRATION_TOOLS_CLAIMS_NOT_PREPARED";
     string private constant ERROR_NO_SNAPSHOT_TOKEN = "MIGRATION_TOOLS_NO_SNAPSHOT_TOKEN";
     string private constant ERROR_INVALID_PCT = "MIGRATION_TOOLS_INVALID_PCT";
 
     /**
      * @notice Initialize migration tools with `_tokenManager` as token manager and `_vault1` and `_vault2` as vaults
-     * @param _tokenManager DAO's token manager which token can be snapshoted and minted in another DAO
+     * @param _tokenManager DAO's token manager which token can be snapshoted and claimed in another DAO
      * @param _vault1 DAO's vault 1 which funds can be transfered
      * @param _vault2 DAO's vault 2 (optional)
      */
@@ -63,21 +63,21 @@ contract MigrationTools is AragonApp {
     }
 
     /**
-     * @notice Set up minting for snapshot token `_snapshotToken` with a vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate + _vestingCompletePeriod)` (all tokens transferable)
-     * @param _snapshotToken Old DAO token which snapshot will be used to mint new DAO tokens
+     * @notice Prepare claims for snapshot token `_snapshotToken` with a vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate + _vestingCompletePeriod)` (all tokens transferable)
+     * @param _snapshotToken Old DAO token which snapshot will be used to claim new DAO tokens
      * @param _vestingStartDate Date the vesting calculations for new token start
      * @param _vestingCliffPeriod Date when the initial portion of new tokens are transferable
      * @param _vestingCompletePeriod Date when all new tokens are transferable
      */
-    function setupMinting(
+    function prepareClaims(
         MiniMeToken _snapshotToken,
         uint64 _vestingStartDate,
         uint64 _vestingCliffPeriod,
         uint64 _vestingCompletePeriod
     )
-        external auth(SETUP_MINTING_ROLE)
+        external auth(PREPARE_CLAIMS_ROLE)
     {
-        require(snapshotBlock == 0, ERROR_MINTING_ALREADY_SETUP);
+        require(snapshotBlock == 0, ERROR_CLAIMS_ALREADY_PREPARED);
         require(isContract(_snapshotToken), ERROR_NO_SNAPSHOT_TOKEN);
         snapshotToken = _snapshotToken;
         vestingStartDate = _vestingStartDate == 0 ? getTimestamp64() : _vestingStartDate;
@@ -87,20 +87,20 @@ contract MigrationTools is AragonApp {
     }
 
     /**
-     * @notice Mint tokens based on a previously taken snapshot for many addresses
-     * @param _holders List of addresses for whom tokens are going to be minted
+     * @notice Claim tokens based on a previously taken snapshot for many addresses
+     * @param _holders List of addresses for whom tokens are going to be claimed
      */
-    function mintTokensForMany(address[] _holders) external isInitialized {
-        require(snapshotBlock != 0, ERROR_MINTING_NOT_SETUP);
+    function claimForMany(address[] _holders) external isInitialized {
+        require(snapshotBlock != 0, ERROR_CLAIMS_NOT_PREPARED);
         for (uint256 i = 0; i < _holders.length; i++) {
-            if (!tokenMigrations[_holders[i]]) {
-                mintTokens(_holders[i]);
+            if (!hasClaimed[_holders[i]]) {
+                claimFor(_holders[i]);
             }
         }
     }
 
     /**
-     * @notice Migrate all `_vaultToken` funds to vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) and use `_newMigrationApp` to snapshot and mint tokens with vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate + _vestingCompletePeriod)` (all tokens transferable)
+     * @notice Migrate all `_vaultToken` funds to vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) and use `_newMigrationApp` to snapshot and claim tokens with vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate + _vestingCompletePeriod)` (all tokens transferable)
      * @param _newMigrationApp New DAO's migration app
      * @param _newVault1 New DAO's first vault in which some funds will be transfered
      * @param _newVault2 New DAO's second vault in which the rest of funds will be transfered
@@ -125,19 +125,19 @@ contract MigrationTools is AragonApp {
         require(_pct <= PCT_BASE, ERROR_INVALID_PCT);
 
         _transferFunds(_newVault1, _newVault2, _vaultToken, _pct);
-        _newMigrationApp.setupMinting(tokenManager.token(), _vestingStartDate, _vestingCliffPeriod, _vestingCompletePeriod);
+        _newMigrationApp.prepareClaims(tokenManager.token(), _vestingStartDate, _vestingCliffPeriod, _vestingCompletePeriod);
 
         emit MigrateDao(_newMigrationApp, _newVault1, _newVault2);
     }
 
     /**
-     * @notice Mint tokens for `_holder` based on previously taken snapshot
-     * @param _holder Address for whom the token is minted
+     * @notice Claim tokens for `_holder` based on previously taken snapshot
+     * @param _holder Address for whom the token is claimed
      */
-    function mintTokens(address _holder) public isInitialized {
-        require(snapshotBlock != 0, ERROR_MINTING_NOT_SETUP);
-        require(!tokenMigrations[_holder], ERROR_TOKENS_ALREADY_MINTED);
-        tokenMigrations[_holder] = true;
+    function claimFor(address _holder) public isInitialized {
+        require(snapshotBlock != 0, ERROR_CLAIMS_NOT_PREPARED);
+        require(!hasClaimed[_holder], ERROR_TOKENS_ALREADY_CLAIMED);
+        hasClaimed[_holder] = true;
 
         uint256 amount = snapshotToken.balanceOfAt(_holder, snapshotBlock);
 
@@ -150,7 +150,8 @@ contract MigrationTools is AragonApp {
             vestingStartDate.add(vestingCompletePeriod),
             true /* revokable */
         );
-        emit MigrateTokens(_holder, amount, vestedId);
+
+        emit ClaimTokens(_holder, amount, vestedId);
     }
 
     /**
@@ -178,6 +179,13 @@ contract MigrationTools is AragonApp {
         }
     }
 
+    /**
+     * @dev Transfer from one vault to another
+     * @param _vault Origin vault
+     * @param _token Transfered token
+     * @param _newVault Destination vault
+     * @param _funds Amount of tokens
+     */
     function _transfer(Vault _vault, address _token, address _newVault, uint256 _funds) internal {
         if (_funds > 0) {
             _vault.transfer(_token, _newVault, _funds);

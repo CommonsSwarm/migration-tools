@@ -1,12 +1,12 @@
 {
   "roles": [
     {
-      "name": "Set up minting",
-      "id": "SETUP_MINTING_ROLE",
+      "name": "Prepare claims",
+      "id": "PREPARE_CLAIMS_ROLE",
       "params": []
     },
     {
-      "name": "Migrate",
+      "name": "Migrate DAO",
       "id": "MIGRATE_ROLE",
       "params": []
     }
