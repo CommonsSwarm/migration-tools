@@ -1,96 +1,44 @@
-# Aragon Buidler Boilerplate
+# Migration Tools
 
-> 🕵️ [Find more boilerplates using GitHub](https://github.com/search?q=topic:aragon-boilerplate) |
-> ✨ [Official boilerplates](https://github.com/search?q=topic:aragon-boilerplate+org:aragon)
+Transfers DAO funds to a new one and old DAO tokenholders can claim new DAO tokens.
 
-> ▶️ To use this boilerplate, run `npx create-aragon-app <app-name>`
+## How does it work?
 
-Buidler + React boilerplate for Aragon applications.
+To migrate the funds and create a claimable copy of the token we need migration tools installed in both DAOs (old DAO and new DAO). We also need to call the `migrate` function that will transfer the funds and create a old token snapshot. Tokenholders will be able to claim new tokens in the new DAO with the function `claimFor`.
 
-## Running your app
+## Initialization
 
-To run the app in a browser with frontend and contract hot-reloading, simply run `npm start`.
+The Migration Tools is initialized with `TokenManager _tokenManager`, `Vault _vault1`, and `Vault _vault2` parameters.
+- The `TokenManager _tokenManager` is the address of the DAO main token manager of the DAO.
+- The `Vault _vault1` parameter is the address of one of the vaults of the DAO.
+- The `Vault _vault2` parameter is the address of the other vault of the DAO.
 
-1. Add code quality tools, like JS and contract linting. You may also want to check existing [buidler plugins](https://buidler.dev/plugins/).
-2. Develop your [AragonApp contract](https://hack.aragon.org/docs/aragonos-building)
-3. Develop your [frontend](https://ui.aragon.org/getting-started/)
-4. [Publish](https://hack.aragon.org/docs/guides-publish)!
+## Roles
 
-## What's in this boilerplate?
+The Migration Tools app implements the following role:
+- **PREPARE_CLAIMS_ROLE**: Determines who can prepare the claims in the new DAO. It should be the migration tools of the old DAO.
+- **MIGRATE_ROLE**: Determines who can migrate the funds from the old DAO.
 
-### npm Scripts
+The Migration Tools app should have the following roles:
+- **TRANSFER_ROLE**: It should be able to transfer tokens from both vaults (just necessary in the old DAO).
+- **ISSUE_ROLE** and **ASSIGN_ROLE**: It should be able to issue and assign vested tokens (just necessary in the new DAO).
 
-- **postinstall**: Runs after installing dependencies.
-- **build-app**: Installs front end project (app/) dependencies.
-- **start** Runs your app inside a DAO.
-- **compile**: Compiles the smart contracts.
-- **test**: Runs tests for the contracts.
-- **publish:major**: Releases a major version to aragonPM.
-- **publish:minor**: Releases a minor version to aragonPM.
-- **publish:patch**: Releases a patch version to aragonPM.
+## Interface
 
-### Hooks
+The Migration Tools app does not have an interface. It is meant as a back-end contract to be used with other Aragon applications.
 
-These hooks are called by the Aragon Buidler plugin during the start task's lifecycle. Use them to perform custom tasks at certain entry points of the development build process, like deploying a token before a proxy is initialized, etc.
+## How to run Migration Tools locally
 
-Link them to the main buidler configuration file (buidler.config.js) in the `aragon.hooks` property.
+The Migration Tools app works in tandem with other Aragon applications. While we do not explore this functionality as a stand alone demo, the [Hatch template](https://github.com/CommonsSwarm/hatch-template) uses the Migration Tools and it can be run locally.
 
-All hooks receive two parameters: 1) A params object that may contain other objects that pertain to the particular hook. 2) A "bre" or BuidlerRuntimeEnvironment object that contains environment objects like web3, Truffle artifacts, etc.
+## Deploying to an Aragon DAO
 
-```
-// Called before a dao is deployed.
-preDao: async ({ log }, { web3, artifacts }) => {},
+TBD
 
-// Called after a dao is deployed.
-postDao: async ({ dao, _experimentalAppInstaller, log }, { web3, artifacts }) => {},
+## Contributing
 
-// Called after the app's proxy is created, but before it's initialized.
-preInit: async ({ proxy, _experimentalAppInstaller, log  }, { web3, artifacts }) => {},
+We welcome community contributions!
 
-// Called after the app's proxy is initialized.
-postInit: async ({ proxy, _experimentalAppInstaller, log  }, { web3, artifacts }) => {},
+Please check out our [open Issues](https://github.com/commonsswarm/migration-tools/issues) to get started.
 
-// Called when the start task needs to know the app proxy's init parameters.
-// Must return an array with the proxy's init parameters.
-getInitParams: async ({ log }, { web3, artifacts }) => {
-  return []
-}
-```
-
-If you want an example of how to use these hooks, please see the [plugin's own tests for an example project](https://github.com/aragon/buidler-aragon/blob/master/test/projects/token-wrapper/scripts/hooks.js).
-
-## Structure
-
-This boilerplate has the following structure:
-
-```md
-root
-├── app
-├ ├── src
-├ └── package.json
-├── contracts
-├ └── UpgradeApp.sol
-├── test
-├── arapp.json
-├── manifest.json
-├── buidler.config.js
-└── package.json
-```
-
-- **app**: Frontend folder. Completely encapsulated: has its own package.json and dependencies.
-  - **src**: Source files.
-  - [**package.json**](https://docs.npmjs.com/creating-a-package-json-file): Frontend npm configuration file.
-- **contracts**: Smart contracts folder.
-  - `UpgradeApp.sol`: AragonApp contract example.
-- **test**: Tests folder.
-- [**arapp.json**](https://hack.aragon.org/docs/cli-global-confg#the-arappjson-file): Aragon configuration file. Includes Aragon-specific metadata for your app.
-- [**manifest.json**](https://hack.aragon.org/docs/cli-global-confg#the-manifestjson-file): Aragon configuration file. Includes web-specific configuration.
-- [**buidler.config.js**](https://buidler.dev/config/): Buidler configuration file.
-- [**package.json**](https://docs.npmjs.com/creating-a-package-json-file): Main npm configuration file.
-
-### Libraries
-
-- [**@aragon/os**](https://github.com/aragon/aragonos): AragonApp smart contract interfaces.
-- [**@aragon/api**](https://github.com/aragon/aragon.js/tree/master/packages/aragon-api): Aragon client application API.
-- [**@aragon/ui**](https://github.com/aragon/aragon-ui): Aragon UI components (in React).
-- [**@aragon/buidler-aragon**](https://github.com/aragon/buidler-aragon): Aragon Buidler plugin.
+If you discover something that could potentially impact security, please notify us immediately. The quickest way to reach us is via the #dev channel in our [Discord chat](https://discord.gg/n58U4hA). Just say hi and that you discovered a potential security vulnerability and we'll DM you to discuss details.
