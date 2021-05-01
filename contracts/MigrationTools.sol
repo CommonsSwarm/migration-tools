@@ -63,7 +63,7 @@ contract MigrationTools is AragonApp {
     }
 
     /**
-     * @notice Prepare claims for snapshot token `_snapshotToken` with a vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate + _vestingCompletePeriod)` (all tokens transferable)
+     * @notice Prepare claims for snapshot token `_snapshotToken.symbol(): string` with a vesting starting `_vestingStartDate == 0x0 ? 'now' : 'at' + @formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting after  `@transformTime(_vestingCompletePeriod, 'best')` (all tokens transferable)
      * @param _snapshotToken Old DAO token which snapshot will be used to claim new DAO tokens
      * @param _vestingStartDate Date the vesting calculations for new token start
      * @param _vestingCliffPeriod Date when the initial portion of new tokens are transferable
@@ -100,7 +100,7 @@ contract MigrationTools is AragonApp {
     }
 
     /**
-     * @notice Migrate all `_vaultToken` funds to vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) and use `_newMigrationApp` to snapshot and claim tokens with vesting starting at `@formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting at `@formatDate(_vestingStartDate + _vestingCompletePeriod)` (all tokens transferable)
+     * @notice Migrate all `_vaultToken.symbol(): string` funds to vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) and use `_newMigrationApp` to snapshot and claim tokens with vesting starting `_vestingStartDate == 0x0 ? 'now' : 'at' + @formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting after  `@transformTime(_vestingCompletePeriod, 'best')` (all tokens transferable)
      * @param _newMigrationApp New DAO's migration app
      * @param _newVault1 New DAO's first vault in which some funds will be transfered
      * @param _newVault2 New DAO's second vault in which the rest of funds will be transfered
