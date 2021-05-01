@@ -41,6 +41,7 @@ contract MigrationTools is AragonApp {
     string private constant ERROR_CLAIMS_NOT_PREPARED = "MIGRATION_TOOLS_CLAIMS_NOT_PREPARED";
     string private constant ERROR_NO_SNAPSHOT_TOKEN = "MIGRATION_TOOLS_NO_SNAPSHOT_TOKEN";
     string private constant ERROR_INVALID_PCT = "MIGRATION_TOOLS_INVALID_PCT";
+    string private constant ERROR_VAULTS_DO_NOT_MATCH = "MIGRATION_TOOLS_VAULTS_DO_NOT_MATCH";
 
     /**
      * @notice Initialize migration tools with `_tokenManager` as token manager and `_vault1` and `_vault2` as vaults
@@ -123,6 +124,7 @@ contract MigrationTools is AragonApp {
         external auth(MIGRATE_ROLE)
     {
         require(_pct <= PCT_BASE, ERROR_INVALID_PCT);
+        require(_newMigrationApp.vault1() == _newVault1 && _newMigrationApp.vault2() == _newVault2, ERROR_VAULTS_DO_NOT_MATCH);
 
         _transferFunds(_newVault1, _newVault2, _vaultToken, _pct);
         _newMigrationApp.prepareClaims(tokenManager.token(), _vestingStartDate, _vestingCliffPeriod, _vestingCompletePeriod);
