@@ -2,8 +2,10 @@ pragma solidity ^0.4.24;
 
 import "@aragon/os/contracts/lib/math/SafeMath.sol";
 import "@aragon/os/contracts/lib/math/SafeMath64.sol";
-import "@aragon/apps-vault/contracts/Vault.sol";
-import "@aragon/apps-token-manager/contracts/TokenManager.sol";
+import "@aragon/os/contracts/apps/AragonApp.sol";
+import "@aragon/minime/contracts/MiniMeToken.sol";
+import {IVault as Vault} from "./external/IVault.sol";
+import {ITokenManager as TokenManager} from "./external/ITokenManager.sol";
 
 
 contract MigrationTools is AragonApp {
