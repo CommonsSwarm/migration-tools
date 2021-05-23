@@ -103,7 +103,7 @@ contract MigrationTools is AragonApp {
     }
 
     /**
-     * @notice Migrate all `_vaultToken.symbol(): string` funds to vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) and use `_newMigrationApp` to snapshot and claim tokens with vesting starting `_vestingStartDate == 0x0 ? 'now' : 'at' + @formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting after  `@transformTime(_vestingCompletePeriod, 'best')` (all tokens transferable)
+     * @notice Migrate all `_vaultToken.symbol(): string` funds to Vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) using Migration app `_newMigrationApp` to snapshot and claim tokens with a vesting starting `_vestingStartDate == 0 ? 'now' : 'at' + @formatDate(_vestingStartDate)`, ending in `@transformTime(_vestingCompletePeriod, 'best')` (date at which all tokens will be transferable), and having a cliff period of `@transformTime(_vestingCliffPeriod, 'best')` (date at which first portion of tokens will be transferable)
      * @param _newMigrationApp New DAO's migration app
      * @param _newVault1 New DAO's first vault in which some funds will be transfered
      * @param _newVault2 New DAO's second vault in which the rest of funds will be transfered
