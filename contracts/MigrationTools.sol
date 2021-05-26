@@ -66,7 +66,7 @@ contract MigrationTools is AragonApp {
     }
 
     /**
-     * @notice Prepare claims for snapshot token `_snapshotToken.symbol(): string` with a vesting starting `_vestingStartDate == 0x0 ? 'now' : 'at' + @formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting after  `@transformTime(_vestingCompletePeriod, 'best')` (all tokens transferable)
+     * @notice Prepare claims for snapshot token `_snapshotToken.symbol(): string` with a vesting starting `_vestingStartDate == 0 ? 'now' : 'at' + @formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting after  `@transformTime(_vestingCompletePeriod, 'best')` (all tokens transferable)
      * @param _snapshotToken Old DAO token which snapshot will be used to claim new DAO tokens
      * @param _vestingStartDate Date the vesting calculations for new token start
      * @param _vestingCliffPeriod Date when the initial portion of new tokens are transferable
