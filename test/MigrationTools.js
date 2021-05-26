@@ -269,6 +269,19 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
       )
       await dao2.migrationTools.claimForMany([root, holder, holder2])
     })
+    it('Can perform after all tokens are claimed', async () => {
+      const token = dao1.token.address
+      await dao2.migrationTools.prepareClaims(
+        token,
+        0,
+        VESTING_CLIFF_PERIOD,
+        VESTING_COMPLETE_PERIOD
+      )
+      await dao2.migrationTools.claimForMany([root, holder])
+      assert.isFalse(await dao2.migrationTools.canPerform(ZERO_ADDRESS, ZERO_ADDRESS, '0x', []))
+      await dao2.migrationTools.claimFor(holder2)
+      assert.isTrue(await dao2.migrationTools.canPerform(ZERO_ADDRESS, ZERO_ADDRESS, '0x', []))
+    })
   })
 
   describe('Migrate', async () => {

@@ -4,11 +4,12 @@ import "@aragon/os/contracts/lib/math/SafeMath.sol";
 import "@aragon/os/contracts/lib/math/SafeMath64.sol";
 import "@aragon/os/contracts/apps/AragonApp.sol";
 import "@aragon/minime/contracts/MiniMeToken.sol";
+import "@aragon/os/contracts/acl/IACLOracle.sol";
 import {IVault as Vault} from "./external/IVault.sol";
 import {ITokenManager as TokenManager} from "./external/ITokenManager.sol";
 
 
-contract MigrationTools is AragonApp {
+contract MigrationTools is AragonApp, IACLOracle {
     using SafeMath for uint256;
     using SafeMath64 for uint64;
 
@@ -32,6 +33,7 @@ contract MigrationTools is AragonApp {
     uint64                              public vestingCompletePeriod;
 
     mapping(address => bool)            public hasClaimed;
+    uint256                             public claimedTokens;
 
     /// ACL
     bytes32 constant public PREPARE_CLAIMS_ROLE = keccak256("PREPARE_CLAIMS_ROLE");
@@ -61,6 +63,7 @@ contract MigrationTools is AragonApp {
         tokenManager = _tokenManager;
         vault1 = _vault1;
         vault2 = _vault2;
+        claimedTokens = 0;
 
         initialized();
     }
@@ -154,8 +157,16 @@ contract MigrationTools is AragonApp {
             vestingStartDate.add(vestingCompletePeriod),
             true /* revokable */
         );
+        claimedTokens = claimedTokens.add(amount);
 
         emit ClaimTokens(_holder, amount, vestedId);
+    }
+
+    /**
+     * @dev ACL oracle returns true when all tokens have been claimed
+     */
+    function canPerform(address, address, bytes32, uint256[]) external view isInitialized returns (bool) {
+        return claimedTokens >= snapshotToken.totalSupply();
     }
 
     /**
