@@ -170,7 +170,7 @@ contract MigrationTools is AragonApp, IACLOracle {
      * @dev ACL oracle returns true when all tokens have been claimed or the freeze period has passed
      */
     function canPerform(address, address, bytes32, uint256[]) external view isInitialized returns (bool) {
-        return claimedTokens >= snapshotToken.totalSupply() || getBlockNumber() >= snapshotBlock.add(freezePeriodBlocks);
+        return claimedTokens >= snapshotToken.totalSupplyAt(snapshotBlock) || getBlockNumber() >= snapshotBlock.add(freezePeriodBlocks);
     }
 
     /**
