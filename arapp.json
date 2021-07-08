@@ -33,11 +33,11 @@
     },
     "xdai": {
       "registry": "0xaafca6b0c89521752e559650206d7c925fd0e530",
-      "appName": "migration-tools-beta.open.aragonpm.eth",
+      "appName": "migration-tools.open.aragonpm.eth",
       "network": "xdai",
-      "wsRPC": "wss://xdai.poanetwork.dev/wss"
+      "wsRPC": "wss://xdai.1hive.org"
     }
   },
-  "appName": "migration-tools-beta.aragonpm.eth",
+  "appName": "migration-tools.aragonpm.eth",
   "path": "contracts/MigrationTools.sol"
 }

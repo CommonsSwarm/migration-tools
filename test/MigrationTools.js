@@ -20,6 +20,26 @@ const Vault = artifacts.require('Vault')
 const MiniMeToken = artifacts.require('MiniMeToken')
 const START_DATE = parseInt(Date.now() / 1000)
 
+const FREEZE_PERIOD_BLOCKS = 10
+
+function evmMine() {
+  return new Promise((resolve, reject) => {
+    web3.currentProvider.send(
+      {
+        jsonrpc: '2.0',
+        method: 'evm_mine',
+        id: new Date().getTime(),
+      },
+      (error, result) => {
+        if (error) {
+          return reject(error)
+        }
+        return resolve(result)
+      }
+    )
+  })
+}
+
 contract('MigrationTools', ([root, holder, holder2, anyone]) => {
   let dao1, dao2, migrationToolsBase, tokenManagerBase, vaultBase, fundsToken
   let ISSUE_ROLE, ASSIGN_ROLE, TRANSFER_ROLE, PREPARE_CLAIMS_ROLE, MIGRATE_ROLE
@@ -50,7 +70,12 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
     await tokenManager.initialize(token.address, true, 0)
     await vault1.initialize()
     await vault2.initialize()
-    await migrationTools.initialize(tokenManager.address, vault1.address, vault2.address)
+    await migrationTools.initialize(
+      tokenManager.address,
+      vault1.address,
+      vault2.address,
+      FREEZE_PERIOD_BLOCKS
+    )
     return { dao, acl, tokenManager, token, vault1, vault2, migrationTools }
   }
 
@@ -121,7 +146,8 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
         dao1.migrationTools.initialize(
           dao1.tokenManager.address,
           dao1.vault1.address,
-          dao1.vault2.address
+          dao1.vault2.address,
+          FREEZE_PERIOD_BLOCKS
         ),
         'INIT_ALREADY_INITIALIZED'
       )
@@ -280,6 +306,23 @@ contract('MigrationTools', ([root, holder, holder2, anyone]) => {
       await dao2.migrationTools.claimForMany([root, holder])
       assert.isFalse(await dao2.migrationTools.canPerform(ZERO_ADDRESS, ZERO_ADDRESS, '0x', []))
       await dao2.migrationTools.claimFor(holder2)
+      assert.isTrue(await dao2.migrationTools.canPerform(ZERO_ADDRESS, ZERO_ADDRESS, '0x', []))
+    })
+
+    it('Can perform if all tokens are not claimed but the freeze period has passed', async () => {
+      const token = dao1.token.address
+      await dao2.migrationTools.prepareClaims(
+        token,
+        0,
+        VESTING_CLIFF_PERIOD,
+        VESTING_COMPLETE_PERIOD
+      )
+      await dao2.migrationTools.claimForMany([root, holder])
+      for (let i = 0; i <= FREEZE_PERIOD_BLOCKS - 3; i++) {
+        await evmMine()
+      }
+      assert.isFalse(await dao2.migrationTools.canPerform(ZERO_ADDRESS, ZERO_ADDRESS, '0x', []))
+      await evmMine()
       assert.isTrue(await dao2.migrationTools.canPerform(ZERO_ADDRESS, ZERO_ADDRESS, '0x', []))
     })
   })

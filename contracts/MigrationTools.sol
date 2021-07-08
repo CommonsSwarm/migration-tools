@@ -24,6 +24,7 @@ contract MigrationTools is AragonApp, IACLOracle {
     TokenManager                        public tokenManager;
     Vault                               public vault1;
     Vault                               public vault2;
+    uint256                             public freezePeriodBlocks;
 
     MiniMeToken                         public snapshotToken;
     uint256                             public snapshotBlock;
@@ -52,11 +53,13 @@ contract MigrationTools is AragonApp, IACLOracle {
      * @param _tokenManager DAO's token manager which token can be snapshoted and claimed in another DAO
      * @param _vault1 DAO's vault 1 which funds can be transfered
      * @param _vault2 DAO's vault 2 (optional)
+     * @param _freezePeriodBlocks During this period, ACL oracle returns false if not all tokens have been claimed yet
      */
     function initialize(
         TokenManager _tokenManager,
         Vault _vault1,
-        Vault _vault2
+        Vault _vault2,
+        uint64 _freezePeriodBlocks
     )
         public onlyInit
     {
@@ -64,12 +67,13 @@ contract MigrationTools is AragonApp, IACLOracle {
         vault1 = _vault1;
         vault2 = _vault2;
         claimedTokens = 0;
+        freezePeriodBlocks = _freezePeriodBlocks;
 
         initialized();
     }
 
     /**
-     * @notice Prepare claims for snapshot token `_snapshotToken.symbol(): string` with a vesting starting `_vestingStartDate == 0 ? 'now' : 'at' + @formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')` (first portion of tokens transferable), and completed vesting after  `@transformTime(_vestingCompletePeriod, 'best')` (all tokens transferable)
+     * @notice Prepare claims for snapshot token `_snapshotToken.symbol(): string` with a vesting starting `_vestingStartDate == 0 ? 'now' : 'at ' + @formatDate(_vestingStartDate)`, cliff after `@transformTime(_vestingCliffPeriod, 'best')`, and completed vesting after `@transformTime(_vestingCompletePeriod, 'best')`
      * @param _snapshotToken Old DAO token which snapshot will be used to claim new DAO tokens
      * @param _vestingStartDate Date the vesting calculations for new token start
      * @param _vestingCliffPeriod Date when the initial portion of new tokens are transferable
@@ -106,7 +110,7 @@ contract MigrationTools is AragonApp, IACLOracle {
     }
 
     /**
-     * @notice Migrate all `_vaultToken.symbol(): string` funds to Vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) using Migration app `_newMigrationApp` to snapshot and claim tokens with a vesting starting `_vestingStartDate == 0 ? 'now' : 'at' + @formatDate(_vestingStartDate)`, ending in `@transformTime(_vestingCompletePeriod, 'best')` (date at which all tokens will be transferable), and having a cliff period of `@transformTime(_vestingCliffPeriod, 'best')` (date at which first portion of tokens will be transferable)
+     * @notice Migrate all `_vaultToken.symbol(): string` funds to Vaults `_newVault1` (`@formatPct(_pct)`%) and `_newVault2` (rest) using Migration app `_newMigrationApp` to snapshot and claim tokens with a vesting starting `_vestingStartDate == 0 ? 'now' : 'at ' + @formatDate(_vestingStartDate)`, ending in `@transformTime(_vestingCompletePeriod, 'best')` and having a cliff period of `@transformTime(_vestingCliffPeriod, 'best')`
      * @param _newMigrationApp New DAO's migration app
      * @param _newVault1 New DAO's first vault in which some funds will be transfered
      * @param _newVault2 New DAO's second vault in which the rest of funds will be transfered
@@ -163,10 +167,10 @@ contract MigrationTools is AragonApp, IACLOracle {
     }
 
     /**
-     * @dev ACL oracle returns true when all tokens have been claimed
+     * @dev ACL oracle returns true when all tokens have been claimed or the freeze period has passed
      */
     function canPerform(address, address, bytes32, uint256[]) external view isInitialized returns (bool) {
-        return claimedTokens >= snapshotToken.totalSupply();
+        return claimedTokens >= snapshotToken.totalSupply() || getBlockNumber() >= snapshotBlock.add(freezePeriodBlocks);
     }
 
     /**
